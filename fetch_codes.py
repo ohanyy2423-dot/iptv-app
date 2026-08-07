@@ -1,33 +1,96 @@
+import re
+import urllib.request
 import asyncio
 from playwright.async_api import async_playwright
 
-# ... (نفس قائمة القنوات السابقة)
+CHANNELS = [
+    "https://t.me/s/iq_iptv"
+]
 
-async def run_scraper():
+async def fetch_all_codes():
+    all_codes = []
+    links_to_visit = []
+
+    for channel in CHANNELS:
+        try:
+            req = urllib.request.Request(channel, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urllib.request.urlopen(req).read().decode('utf-8')
+            found_links = re.findall(r'href="(https?://[^"]+)"', html)
+            for link in found_links:
+                if "t.me" not in link and "telegram" not in link and "google" not in link:
+                    links_to_visit.append(link)
+        except Exception as e:
+            print(f"Error: {e}")
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        page = await context.new_page()
 
-        # ضبط المتصفح ليبدو كإنسان
-        await page.set_extra_http_headers({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"})
-
-        # الانتقال لرابط التحميل
-        await page.goto("رابط_التحميل_من_القناة", timeout=60000)
-        
-        # محاكاة الانتظار للتحميل
-        await asyncio.sleep(5)
-
-        # البحث عن أزرار التحميل الشائعة والضغط عليها
-        selectors = ["button:has-text('Get Link')", "a:has-text('Download')", "#btn_get_link", ".download-button"]
-        for selector in selectors:
+        for link in list(set(links_to_visit))[:3]:
             try:
-                await page.click(selector, timeout=5000)
+                print(f"Visiting: {link}")
+                await page.goto(link, timeout=20000, wait_until="domcontentloaded")
                 await asyncio.sleep(3)
-            except:
-                pass
+                
+                # محاولة الضغط على أزرار التخطى أو التحميل إن وجدت
+                for sel in ["button:has-text('Get Link')", "a:has-text('Download')", ".btn", "#download"]:
+                    try:
+                        await page.click(sel, timeout=2000)
+                        await asyncio.sleep(2)
+                    except:
+                        pass
 
-        # استخراج المحتوى بعد النقر
-        content = await page.content()
-        # هنا يتم استخراج الأكواد بنفس طريقة الـ Regex السابقة
-        
+                content = await page.content()
+                matches = re.findall(r'(http[s]?://[^\s<"]+:\d+).*?(?:username|user)\s*[:=]?\s*([^\s<"]+).*?(?:password|pass)\s*[:=]?\s*([^\s<"]+)', content, re.DOTALL | re.IGNORECASE)
+                for m in matches:
+                    all_codes.append({
+                        'host': m[0],
+                        'user': m[1].strip('"\''),
+                        'pass': m[2].strip('"\'')
+                    })
+            except Exception as e:
+                print(f"Error with link: {e}")
+
         await browser.close()
+
+    return [dict(t) for t in {tuple(d.items()) for d in all_codes}]
+
+def generate_html(codes):
+    html_content = """<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Xtream Codes</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 20px; }
+        .card { background: #1e1e1e; padding: 15px; margin-bottom: 12px; border-radius: 8px; border-right: 4px solid #007bff; }
+        p { margin: 6px 0; word-break: break-all; }
+        b { color: #00bcd4; }
+    </style>
+</head>
+<body>
+    <h2>أكواد Xtream المتوفرة تلقائياً</h2>
+"""
+    if not codes:
+        html_content += "<p>جاري سحب الأكواد... يرجى الانتظار للتحديث القادم.</p>"
+    else:
+        for c in codes:
+            html_content += f"""
+    <div class="card">
+        <p><b>Host:</b> {c['host']}</p>
+        <p><b>Username:</b> {c['user']}</p>
+        <p><b>Password:</b> {c['pass']}</p>
+    </div>"""
+
+    html_content += """
+</body>
+</html>"""
+
+    with open("index.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+if __name__ == "__main__":
+    codes = asyncio.run(fetch_all_codes())
+    generate_html(codes)
