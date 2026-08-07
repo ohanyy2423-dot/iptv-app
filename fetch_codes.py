@@ -16,18 +16,18 @@ async def fetch_all_codes():
             req = urllib.request.Request(channel, headers={'User-Agent': 'Mozilla/5.0'})
             html = urllib.request.urlopen(req).read().decode('utf-8')
             
-            # استخراج الروابط مع الحفاظ على الترتيب من الأحدث للأقدم
+            # استخراج الروابط مع فلترة واستبعاد روابط الإعلانات وصفحات التتبع تماماً
             found_links = re.findall(r'href="(https?://[^"]+)"', html)
             seen = set()
             for link in found_links:
-                if "t.me" not in link and "telegram.org" not in link and "google.com" not in link:
+                if not any(domain in link for domain in ["t.me", "telegram.org", "google.com", "pagead", "ads", "doubleclick", "googlesyndication"]):
                     if link not in seen:
                         seen.add(link)
                         links_to_visit.append(link)
         except Exception as e:
             print(f"Error reading channel: {e}")
 
-    # أخذ أحدث 3 روابط فقط بالترتيب الزمني
+    # أخذ أحدث 3 روابط حقيقية فقط بالترتيب الزمني
     target_links = links_to_visit[:3]
     print(f"Target links to visit: {target_links}")
 
@@ -42,11 +42,9 @@ async def fetch_all_codes():
         for link in target_links:
             try:
                 print(f"Visiting: {link}")
-                # الانتظار حتى تحميل الصفحة بالكامل
                 await page.goto(link, timeout=40000, wait_until="networkidle")
                 await asyncio.sleep(5)
 
-                # محاولة النقر على أي أزرار تخطي أو تحميل محتملة
                 for btn_selector in ["a.btn", "button#download", "a:has-text('Get Link')", "a:has-text('Proceed')", "button:has-text('Click')", "input[type='submit']"]:
                     try:
                         if await page.locator(btn_selector).count() > 0:
@@ -57,7 +55,6 @@ async def fetch_all_codes():
 
                 content = await page.content()
                 
-                # البحث عن صيغة أكواد Xtream داخل محتوى الرابط الخارجي
                 matches = re.findall(r'(http[s]?://[^\s<"]+:\d+).*?(?:username|user)\s*[:=]?\s*([^\s<"]+).*?(?:password|pass)\s*[:=]?\s*([^\s<"]+)', content, re.DOTALL | re.IGNORECASE)
                 for m in matches:
                     all_codes.append({
@@ -87,10 +84,10 @@ def generate_html(codes):
     </style>
 </head>
 <body>
-    <h2 style="text-align: center; color: #00bcd4;">أكواد Xtream المستخرجة من الروابط</h2>
+    <h2 style="text-align: center; color: #00bcd4;">أكواد Xtream المستخرجة</h2>
 """
     if not codes:
-        html_content += "<p style='text-align: center;'>جاري فحص أحدث الروابط... انتظر التحديث القادم.</p>"
+        html_content += "<p style='text-align: center;'>جاري فحص الروابط الحقيقية... انتظر التحديث القادم.</p>"
     else:
         for c in codes:
             html_content += f"""
