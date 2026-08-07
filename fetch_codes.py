@@ -4,10 +4,20 @@ import asyncio
 from playwright.async_api import async_playwright
 from telethon import TelegramClient
 
-# بيانات التليجرام (يتم سحبها من Secrets في GitHub)
+# بيانات التليجرام (تنسحب من Secrets)
 API_ID = int(os.environ.get("TG_API_ID", 0))
 API_HASH = os.environ.get("TG_API_HASH", "")
-CHANNEL_USERNAME = 'SOMA_TECHPRO' # اسم القناة
+
+# القنوات والمجموعات الـ 7 المحددة من الصور
+CHANNELS = [
+    'APK2KING',
+    'SOMA_TECHPRO',
+    'GHOSTS_PRO',
+    'IPTV_MAX',
+    'bobtech1_2026',
+    'Technolgeria',
+    'ASMR_GOLD'
+]
 
 async def bypass_and_get_codes(url):
     """فتح الرابط المخفي والضغط على الأزرار واستخراج الأكواد"""
@@ -19,21 +29,17 @@ async def bypass_and_get_codes(url):
         try:
             await page.goto(url, timeout=60000)
             
-            # محاولة الضغط على أزرار التخطي أو التحميل الشائعة
             buttons_to_click = ["تحميل", "تخطي", "Get Link", "Download", "Continue", "رابط التحميل"]
             for btn_text in buttons_to_click:
                 try:
                     button = page.locator(f'text="{btn_text}"').first
                     if await button.is_visible():
                         await button.click()
-                        await page.wait_for_timeout(5000) # انتظار التحميل
+                        await page.wait_for_timeout(5000)
                 except Exception:
                     continue
 
-            # الانتظار في حال وجود عداد تنازلي (15 ثانية)
             await page.wait_for_timeout(15000)
-
-            # قراءة المحتوى النهائي للصفحة
             content = await page.content()
             await browser.close()
             return content
@@ -49,7 +55,6 @@ def extract_xtream_info(text):
     passes = re.findall(r'password[=:\s]+([^\s]+)', text, re.IGNORECASE)
     
     results = []
-    # تجميع البيانات المكتوبة صراحة
     for i in range(min(len(users), len(passes))):
         host = hosts[i] if i < len(hosts) else "http://example-server.com:8080"
         results.append({"host": host, "user": users[i], "pass": passes[i]})
@@ -58,26 +63,29 @@ def extract_xtream_info(text):
 async def main():
     codes_list = []
     
-    # الاتصال بالتليجرام
     async with TelegramClient('session', API_ID, API_HASH) as client:
-        # قراءة آخر 10 رسائل من القناة
-        async for message in client.iter_messages(CHANNEL_USERNAME, limit=10):
-            msg_text = message.text or ""
-            
-            # 1. فحص الأكواد المكتوبة مباشر داخل الرسالة
-            direct_codes = extract_xtream_info(msg_text)
-            codes_list.extend(direct_codes)
-            
-            # 2. فحص وجود روابط اختصار داخل الرسالة
-            urls = re.findall(r'https?://[^\s]+', msg_text)
-            for url in urls:
-                if "t.me" not in url: # يتجاهل روابط التليجرام
-                    print(f"جاري جلب الرابط المختصر: {url}")
-                    page_html = await bypass_and_get_codes(url)
-                    extracted = extract_xtream_info(page_html)
-                    codes_list.extend(extracted)
+        for channel in CHANNELS:
+            try:
+                print(f"جاري المسح في: {channel}")
+                # قراءة آخر 5 رسائل من كل مصدر
+                async for message in client.iter_messages(channel, limit=5):
+                    msg_text = message.text or ""
+                    
+                    # 1. الأكواد المباشرة
+                    direct_codes = extract_xtream_info(msg_text)
+                    codes_list.extend(direct_codes)
+                    
+                    # 2. روابط اختصار الأكواد
+                    urls = re.findall(r'https?://[^\s]+', msg_text)
+                    for url in urls:
+                        if "t.me" not in url:
+                            print(f"جاري جلب الرابط المختصر: {url}")
+                            page_html = await bypass_and_get_codes(url)
+                            extracted = extract_xtream_info(page_html)
+                            codes_list.extend(extracted)
+            except Exception as e:
+                print(f"تعذر القراءة من {channel}: {e}")
 
-    # إنشاء صفحة HTML بالأكواد المجلوبة
     generate_html(codes_list)
 
 def generate_html(codes):
