@@ -16,7 +16,7 @@ async def fetch_all_codes():
             req = urllib.request.Request(channel, headers={'User-Agent': 'Mozilla/5.0'})
             html = urllib.request.urlopen(req).read().decode('utf-8')
             
-            # استخراج الروابط مع الحفاظ على الترتيب (من الأحدث للأقدم)
+            # استخراج الروابط مع الحفاظ على الترتيب من الأحدث للأقدم
             found_links = re.findall(r'href="(https?://[^"]+)"', html)
             seen = set()
             for link in found_links:
@@ -27,24 +27,27 @@ async def fetch_all_codes():
         except Exception as e:
             print(f"Error reading channel: {e}")
 
-    # أخذ أحدث 3 روابط فقط بدون عشوائية
+    # أخذ أحدث 3 روابط فقط بالترتيب الزمني
     target_links = links_to_visit[:3]
-    print(f"Latest 3 links to visit: {target_links}")
+    print(f"Target links to visit: {target_links}")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800}
         )
         page = await context.new_page()
 
         for link in target_links:
             try:
-                print(f"Visiting target link: {link}")
-                await page.goto(link, timeout=30000, wait_until="domcontentloaded")
-                await asyncio.sleep(6)
+                print(f"Visiting: {link}")
+                # الانتظار حتى تحميل الصفحة بالكامل
+                await page.goto(link, timeout=40000, wait_until="networkidle")
+                await asyncio.sleep(5)
 
-                for btn_selector in ["a.btn", "button#download", "a:has-text('Get Link')", "a:has-text('Proceed')", "input[type='submit']"]:
+                # محاولة النقر على أي أزرار تخطي أو تحميل محتملة
+                for btn_selector in ["a.btn", "button#download", "a:has-text('Get Link')", "a:has-text('Proceed')", "button:has-text('Click')", "input[type='submit']"]:
                     try:
                         if await page.locator(btn_selector).count() > 0:
                             await page.click(btn_selector, timeout=3000)
@@ -54,6 +57,7 @@ async def fetch_all_codes():
 
                 content = await page.content()
                 
+                # البحث عن صيغة أكواد Xtream داخل محتوى الرابط الخارجي
                 matches = re.findall(r'(http[s]?://[^\s<"]+:\d+).*?(?:username|user)\s*[:=]?\s*([^\s<"]+).*?(?:password|pass)\s*[:=]?\s*([^\s<"]+)', content, re.DOTALL | re.IGNORECASE)
                 for m in matches:
                     all_codes.append({
@@ -62,12 +66,11 @@ async def fetch_all_codes():
                         'pass': m[2].strip('"\'<>')
                     })
             except Exception as e:
-                print(f"Skipping link due to error: {e}")
+                print(f"Error with link: {e}")
 
         await browser.close()
 
-    unique_codes = [dict(t) for t in {tuple(d.items()) for d in all_codes}]
-    return unique_codes
+    return [dict(t) for t in {tuple(d.items()) for d in all_codes}]
 
 def generate_html(codes):
     html_content = """<!DOCTYPE html>
@@ -84,10 +87,10 @@ def generate_html(codes):
     </style>
 </head>
 <body>
-    <h2 style="text-align: center; color: #00bcd4;">أكواد Xtream المستخرجة تلقائياً</h2>
+    <h2 style="text-align: center; color: #00bcd4;">أكواد Xtream المستخرجة من الروابط</h2>
 """
     if not codes:
-        html_content += "<p style='text-align: center;'>جاري البحث وسحب الأكواد الجديدة... انتظر التحديث القادم.</p>"
+        html_content += "<p style='text-align: center;'>جاري فحص أحدث الروابط... انتظر التحديث القادم.</p>"
     else:
         for c in codes:
             html_content += f"""
