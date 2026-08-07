@@ -3,7 +3,6 @@ import urllib.request
 import asyncio
 from playwright.async_api import async_playwright
 
-# قنوات التليجرام المستهدفة
 CHANNELS = [
     "https://t.me/s/iq_iptv"
 ]
@@ -12,21 +11,26 @@ async def fetch_all_codes():
     all_codes = []
     links_to_visit = []
 
-    # 1. سحب روابط المنشورات من القناة
     for channel in CHANNELS:
         try:
             req = urllib.request.Request(channel, headers={'User-Agent': 'Mozilla/5.0'})
             html = urllib.request.urlopen(req).read().decode('utf-8')
             
-            # استخراج جميع الروابط الموجودة في المنشورات
+            # استخراج الروابط مع الحفاظ على الترتيب (من الأحدث للأقدم)
             found_links = re.findall(r'href="(https?://[^"]+)"', html)
+            seen = set()
             for link in found_links:
                 if "t.me" not in link and "telegram.org" not in link and "google.com" not in link:
-                    links_to_visit.append(link)
+                    if link not in seen:
+                        seen.add(link)
+                        links_to_visit.append(link)
         except Exception as e:
             print(f"Error reading channel: {e}")
 
-    # 2. تشغيل المتصفح الخفي لدخول الروابط واستخراج الأكواد الفعلية
+    # أخذ أحدث 3 روابط فقط بدون عشوائية
+    target_links = links_to_visit[:3]
+    print(f"Latest 3 links to visit: {target_links}")
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
@@ -34,16 +38,12 @@ async def fetch_all_codes():
         )
         page = await context.new_page()
 
-        # فحص أحدث الروابط
-        for link in list(set(links_to_visit))[:4]:
+        for link in target_links:
             try:
                 print(f"Visiting target link: {link}")
                 await page.goto(link, timeout=30000, wait_until="domcontentloaded")
-                
-                # الانتظار حتى تحمّل الصفحة تماماً وتتخطى أي عداد تليجرام أو إعلانات
                 await asyncio.sleep(6)
 
-                # محاولة النقر على أي زر تخطي أو تحميل قد يظهر في الصفحة
                 for btn_selector in ["a.btn", "button#download", "a:has-text('Get Link')", "a:has-text('Proceed')", "input[type='submit']"]:
                     try:
                         if await page.locator(btn_selector).count() > 0:
@@ -52,10 +52,8 @@ async def fetch_all_codes():
                     except:
                         pass
 
-                # قراءة محتوى الصفحة بالكامل بعد التخطي
                 content = await page.content()
                 
-                # البحث الذكي عن صيغة سيرفرات الـ Xtream (Host + User + Pass)
                 matches = re.findall(r'(http[s]?://[^\s<"]+:\d+).*?(?:username|user)\s*[:=]?\s*([^\s<"]+).*?(?:password|pass)\s*[:=]?\s*([^\s<"]+)', content, re.DOTALL | re.IGNORECASE)
                 for m in matches:
                     all_codes.append({
@@ -63,24 +61,11 @@ async def fetch_all_codes():
                         'user': m[1].strip('"\'<>'),
                         'pass': m[2].strip('"\'<>')
                     })
-                    
-                # صيغة بديلة للبحث في النصوص المباشرة داخل الصفحة
-                if not matches:
-                    alt_matches = re.findall(r'(http[s]?://[^\s<>"\']+:\d+)\s+([^\s<>"\']+)\s+([^\s<>"\']+)', content)
-                    for am in alt_matches:
-                        if len(am[1]) > 2 and len(am[2]) > 2 and "http" not in am[1]:
-                            all_codes.append({
-                                'host': am[0],
-                                'user': am[1],
-                                'pass': am[2]
-                            })
-
             except Exception as e:
                 print(f"Skipping link due to error: {e}")
 
         await browser.close()
 
-    # إزالة الأكواد المكررة
     unique_codes = [dict(t) for t in {tuple(d.items()) for d in all_codes}]
     return unique_codes
 
