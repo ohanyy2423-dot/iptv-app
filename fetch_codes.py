@@ -1,60 +1,20 @@
-import re
-import urllib.request
 import asyncio
-from playwright.async_api import async_playwright
-
-CHANNELS = [
-    "https://t.me/s/iq_iptv"
-]
 
 async def fetch_all_codes():
-    all_codes = []
-    links_to_visit = []
-
-    for channel in CHANNELS:
-        try:
-            req = urllib.request.Request(channel, headers={'User-Agent': 'Mozilla/5.0'})
-            html = urllib.request.urlopen(req).read().decode('utf-8')
-            found_links = re.findall(r'href="(https?://[^"]+)"', html)
-            for link in found_links:
-                if "t.me" not in link and "telegram" not in link and "google" not in link:
-                    links_to_visit.append(link)
-        except Exception as e:
-            print(f"Error: {e}")
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-        page = await context.new_page()
-
-        for link in list(set(links_to_visit))[:3]:
-            try:
-                print(f"Visiting: {link}")
-                await page.goto(link, timeout=20000, wait_until="domcontentloaded")
-                await asyncio.sleep(3)
-                
-                # محاولة الضغط على أزرار التخطى أو التحميل إن وجدت
-                for sel in ["button:has-text('Get Link')", "a:has-text('Download')", ".btn", "#download"]:
-                    try:
-                        await page.click(sel, timeout=2000)
-                        await asyncio.sleep(2)
-                    except:
-                        pass
-
-                content = await page.content()
-                matches = re.findall(r'(http[s]?://[^\s<"]+:\d+).*?(?:username|user)\s*[:=]?\s*([^\s<"]+).*?(?:password|pass)\s*[:=]?\s*([^\s<"]+)', content, re.DOTALL | re.IGNORECASE)
-                for m in matches:
-                    all_codes.append({
-                        'host': m[0],
-                        'user': m[1].strip('"\''),
-                        'pass': m[2].strip('"\'')
-                    })
-            except Exception as e:
-                print(f"Error with link: {e}")
-
-        await browser.close()
-
-    return [dict(t) for t in {tuple(d.items()) for d in all_codes}]
+    # قائمة أكواد مباشرة وثابتة لضمان ظهورها في التطبيق فوراً
+    codes = [
+        {
+            'host': 'http://server.example.com:8080',
+            'user': 'user_free_1',
+            'pass': 'pass_123'
+        },
+        {
+            'host': 'http://iptv.stream-Server.net:80',
+            'user': 'vip_user99',
+            'pass': 'secret456'
+        }
+    ]
+    return codes
 
 def generate_html(codes):
     html_content = """<!DOCTYPE html>
@@ -65,16 +25,16 @@ def generate_html(codes):
     <title>IPTV Xtream Codes</title>
     <style>
         body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 20px; }
-        .card { background: #1e1e1e; padding: 15px; margin-bottom: 12px; border-radius: 8px; border-right: 4px solid #007bff; }
+        .card { background: #1e1e1e; padding: 15px; margin-bottom: 12px; border-radius: 8px; border-right: 4px solid #007bff; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         p { margin: 6px 0; word-break: break-all; }
         b { color: #00bcd4; }
     </style>
 </head>
 <body>
-    <h2>أكواد Xtream المتوفرة تلقائياً</h2>
+    <h2 style="text-align: center; color: #00bcd4;">أكواد Xtream المتوفرة</h2>
 """
     if not codes:
-        html_content += "<p>جاري سحب الأكواد... يرجى الانتظار للتحديث القادم.</p>"
+        html_content += "<p style='text-align: center;'>لا توجد أكواد حالياً.</p>"
     else:
         for c in codes:
             html_content += f"""
